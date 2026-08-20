@@ -1,0 +1,32 @@
+{
+  "name": "wallapop-mcp",
+  "version": "0.1.0",
+  "description": "Hybrid MCP server for the Wallapop marketplace (unofficial, reverse-engineered API with Playwright fallback)",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "wallapop-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "smoke": "tsx scripts/smoke.ts",
+    "health": "tsx scripts/health.ts",
+    "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.23.0",
+    "dotenv": "^16.4.5",
+    "playwright-core": "^1.51.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  }
+}

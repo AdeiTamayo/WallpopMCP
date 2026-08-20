@@ -1,0 +1,7 @@
+node_modules/
+dist/
+wallapop-session.json
+.wallapop-browser/
+.env
+*.log
+scripts-private/

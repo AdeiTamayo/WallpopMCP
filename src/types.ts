@@ -13,6 +13,12 @@ export interface SearchParams {
   maxResults?: number;
 }
 
+export interface ShippingInfo {
+  itemIsShippable?: boolean;
+  userAllowsShipping?: boolean;
+  costConfigurationId?: string;
+}
+
 export interface ItemSummary {
   id: string;
   title: string;
@@ -23,7 +29,7 @@ export interface ItemSummary {
   city?: string;
   reserved?: boolean;
   favorited?: boolean;
-  shipping?: { itemIsShippable?: boolean; userAllowsShipping?: boolean };
+  shipping?: ShippingInfo;
   createdAt?: number;
   modifiedAt?: number;
   categoryId?: number;

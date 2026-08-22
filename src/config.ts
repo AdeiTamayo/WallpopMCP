@@ -19,6 +19,11 @@ export interface AppConfig {
   rateDelayMs: number;
   browser: "auto" | "chrome" | "msedge" | "chromium" | "off";
   maxResultsCap: number;
+  pickupLat?: number;
+  pickupLng?: number;
+  pickupRadiusKm?: number;
+  protectionPct: number;
+  shippingFeeEur: number;
 }
 
 function num(name: string, fallback: number): number {
@@ -37,6 +42,9 @@ function bool(name: string, fallback: boolean): boolean {
 export function loadConfig(): AppConfig {
   const sessionFile = process.env.WALLAPOP_SESSION_FILE ?? path.join(projectRoot, "wallapop-session.json");
   const browser = (process.env.WALLAPOP_BROWSER ?? "auto") as AppConfig["browser"];
+  const pickupLat = process.env.WALLAPOP_PICKUP_LAT ? Number(process.env.WALLAPOP_PICKUP_LAT) : undefined;
+  const pickupLng = process.env.WALLAPOP_PICKUP_LNG ? Number(process.env.WALLAPOP_PICKUP_LNG) : undefined;
+  const pickupRadiusKm = process.env.WALLAPOP_PICKUP_RADIUS_KM ? Number(process.env.WALLAPOP_PICKUP_RADIUS_KM) : undefined;
   return {
     email: process.env.WALLAPOP_EMAIL || undefined,
     password: process.env.WALLAPOP_PASSWORD || undefined,
@@ -48,6 +56,11 @@ export function loadConfig(): AppConfig {
     rateDelayMs: num("WALLAPOP_RATE_DELAY_MS", 600),
     browser: ["auto", "chrome", "msedge", "chromium", "off"].includes(browser) ? browser : "auto",
     maxResultsCap: num("WALLAPOP_MAX_RESULTS", 200),
+    pickupLat: pickupLat !== undefined && Number.isFinite(pickupLat) ? pickupLat : undefined,
+    pickupLng: pickupLng !== undefined && Number.isFinite(pickupLng) ? pickupLng : undefined,
+    pickupRadiusKm: pickupRadiusKm !== undefined && Number.isFinite(pickupRadiusKm) ? pickupRadiusKm : undefined,
+    protectionPct: num("WALLAPOP_PROTECTION_PCT", 8),
+    shippingFeeEur: num("WALLAPOP_SHIPPING_FEE_EUR", 3),
   };
 }
 

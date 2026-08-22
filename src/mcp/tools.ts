@@ -1,11 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { hybrid, memoize } from "../hybrid.js";
 import { SessionManager } from "../client/auth.js";
 import { config, hasSessionFile } from "../config.js";
 import { getSavedSearches, createSavedSearch, deleteSavedSearch } from "../client/savedSearches.js";
 import { favoriteListing, unfavoriteListing, resolveApiId } from "../client/favorites.js";
-import { getConversations, getConversationMessages, sendMessage, makeOffer } from "../client/chat.js";
+import { getConversations, getConversationMessages, sendMessage, makeOffer, evaluateOfferTarget } from "../client/chat.js";
+import { getListingById } from "../client/items.js";
 import { browserClient } from "../fallback/browserClient.js";
 import { WallapopError } from "../types.js";
 import type { ItemSummary } from "../types.js";
@@ -16,6 +18,13 @@ const BAD_WORDS_SCAN =
   /para piezas|piezas|no funciona|no enciende|face id|reparaci|bloquead|iclo|icloud activ|funda|case|averi|pantalla rota|cristal roto|solo pantalla|reacondicion|clon|r\u00e9plica|replica/i;
 
 const BOOK_SLUG_SCAN = /libro|quimica|invisible|stephen|andrea|tome|vicens|vives|boligrafo|cd-?rom|pelicula|dvd|consola|reloj/i;
+
+const A_READ_LOCAL: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+const A_READ_REMOTE: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+const A_REFRESH: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+const A_CREATE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
+const A_DELETE: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
+const A_TOGGLE: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 
 function textResult(data: unknown): { content: { type: "text"; text: string }[] } {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
@@ -42,6 +51,7 @@ export function registerPublicTools(server: McpServer): void {
     "server_status",
     {
       title: "Get MCP server health and auth status",
+      annotations: A_READ_LOCAL,
       description:
         "Returns whether the server is configured for public or authenticated use, whether a session is loaded, and whether browser fallback is available.",
       inputSchema: {},
@@ -72,6 +82,7 @@ export function registerPublicTools(server: McpServer): void {
     "search_products",
     {
       title: "Search Wallapop listings",
+      annotations: A_READ_REMOTE,
       description:
         "Search Wallapop for products with optional filters: category, price range, location (latitude/longitude), radius, sort order. Paginate with the nextPage cursor returned. Reserved listings are filtered out. Returns up to maxResults listings (default 40, capped at 200).",
       inputSchema: {
@@ -112,6 +123,7 @@ export function registerPublicTools(server: McpServer): void {
     "get_listing",
     {
       title: "Get full listing details",
+      annotations: A_READ_REMOTE,
       description:
         "Get detailed information about a single Wallapop listing: description, condition, price, images, location, views, favorites, seller id, shipping options. Accepts the numeric listing id, a web slug, or a full item URL. Falls back to server-side rendering when the API fails.",
       inputSchema: {
@@ -132,6 +144,7 @@ export function registerPublicTools(server: McpServer): void {
     "get_seller",
     {
       title: "Get seller information",
+      annotations: A_READ_REMOTE,
       description:
         "Get a Wallapop seller profile by numeric user id (from a listing) or by web slug (e.g. 'sergiof-462579195'): rating, review count, sold/published counts, registration date, location.",
       inputSchema: {
@@ -152,6 +165,7 @@ export function registerPublicTools(server: McpServer): void {
     "list_categories",
     {
       title: "List Wallapop categories",
+      annotations: A_READ_REMOTE,
       description: "List all marketplace top-level categories with ids and subcategories.",
       inputSchema: {},
     },
@@ -169,6 +183,7 @@ export function registerPublicTools(server: McpServer): void {
     "scan_products",
     {
       title: "Scan multiple searches for phone candidates",
+      annotations: A_READ_REMOTE,
       description:
         "Runs several keyword searches (default nationwide radius) and dedupes results, keeping only in-range, shippable listings and flagging suspicious ones (scam wording or book-slug retitled listings). Returns compact candidate list, ready for get_listing/verify.",
       inputSchema: {
@@ -259,6 +274,7 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     "refresh_session",
     {
       title: "Refresh the Wallapop auth session",
+      annotations: A_REFRESH,
       description:
         "Refresh or re-login the current session so favorite and saved-search tools continue to work with fresh access tokens.",
       inputSchema: {},
@@ -278,6 +294,7 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     "get_saved_searches",
     {
       title: "List saved searches",
+      annotations: A_READ_REMOTE,
       description: "List the saved search alerts of the authenticated Wallapop account.",
       inputSchema: {},
     },
@@ -295,6 +312,7 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     "create_saved_search",
     {
       title: "Save a search",
+      annotations: A_CREATE,
       description: "Save a search as an alert on the authenticated account (keywords, category, price range, sort).",
       inputSchema: {
         keywords: z.string().describe("Search keywords"),
@@ -324,6 +342,7 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     "delete_saved_search",
     {
       title: "Delete a saved search",
+      annotations: A_DELETE,
       description: "Delete a saved search alert by id.",
       inputSchema: {
         searchId: z.string().describe("Saved search id"),
@@ -343,6 +362,7 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     "favorite_listing",
     {
       title: "Favorite a listing",
+      annotations: A_TOGGLE,
       description:
         "Add a listing to the authenticated account favorites. Accepts numeric id, web slug, or full item URL. Tries the API first and falls back to browser automation (Persistent Chrome/Edge profile) when the API does not work.",
       inputSchema: {
@@ -375,6 +395,7 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     "unfavorite_listing",
     {
       title: "Unfavorite a listing",
+      annotations: A_TOGGLE,
       description:
         "Remove a listing from the authenticated account favorites. Accepts numeric id, web slug, or full item URL. Tries the API first and falls back to browser automation when the API does not work.",
       inputSchema: {
@@ -416,6 +437,7 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     "list_conversations",
     {
       title: "List chat conversations",
+      annotations: A_READ_REMOTE,
       description:
         "List the chat conversations of the authenticated account: the other user, the item being discussed, unread count, and the last message of each conversation. Auth required.",
       inputSchema: {},
@@ -444,6 +466,7 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     "get_messages",
     {
       title: "Get messages of a conversation",
+      annotations: A_READ_REMOTE,
       description:
         "Get the full message history of a single chat conversation (up to the last 30 messages bundled in the inbox). Auth required.",
       inputSchema: {
@@ -477,6 +500,7 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     "send_message",
     {
       title: "Send a chat message",
+      annotations: A_CREATE,
       description:
         "Send a text message in an existing chat conversation (see list_conversations for the conversation id). Publishes via the Wallapop chat channel. Auth required.",
       inputSchema: {
@@ -498,6 +522,7 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     "make_offer",
     {
       title: "Make a purchase offer",
+      annotations: A_CREATE,
       description:
         "Send a purchase offer (price in EUR) for an item. The seller receives the offer in the chat and can accept or reject it. Auth required.",
       inputSchema: {
@@ -514,6 +539,20 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
             "NO_API_ID"
           );
         }
+        const listing = await getListingById(itemHash);
+        const evaluation = evaluateOfferTarget(args.amount, {
+          shippable: listing.shipping?.userAllowsShipping,
+          itemLat: listing.location?.latitude,
+          itemLng: listing.location?.longitude,
+          pickupLat: config.pickupLat,
+          pickupLng: config.pickupLng,
+          pickupRadiusKm: config.pickupRadiusKm,
+          protectionPct: config.protectionPct,
+          shippingFeeEur: config.shippingFeeEur,
+        });
+        if (!evaluation.ok) {
+          return errorResult(new WallapopError(evaluation.reason ?? "Offer not allowed", "OFFER_UNREACHABLE"));
+        }
         const result = await makeOffer(session, itemHash, args.amount);
         return textResult({
           sent: true,
@@ -521,6 +560,10 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
           itemId: itemHash,
           amount: result.amount,
           currency: result.currency,
+          shipping: listing.shipping,
+          pickupDistanceKm: evaluation.pickupDistanceKm,
+          estimatedTotal: evaluation.estimatedTotal,
+          breakdown: evaluation.breakdown,
         });
       } catch (err) {
         return errorResult(err);

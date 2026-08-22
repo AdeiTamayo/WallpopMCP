@@ -1,5 +1,5 @@
 import { apiRequest } from "./httpClient.js";
-import type { ListingDetail, ListingImage } from "../types.js";
+import type { ListingDetail, ListingImage, ShippingInfo } from "../types.js";
 
 function get(obj: unknown, path: Array<string | number>): unknown {
   let cur: unknown = obj;
@@ -33,6 +33,23 @@ function pickImages(item: Record<string, unknown>): ListingImage[] {
         big: urls && typeof urls.big === "string" ? urls.big : undefined,
       };
     });
+}
+
+function pickShipping(raw: Record<string, unknown>): ShippingInfo | undefined {
+  const shipping = get(raw, ["shipping"]) as Record<string, unknown> | undefined;
+  if (!shipping) return undefined;
+  return {
+    itemIsShippable:
+      shipping.item_is_shippable === true || shipping.isItemShippable === true,
+    userAllowsShipping:
+      shipping.user_allows_shipping === true || shipping.isShippingAllowedByUser === true,
+    costConfigurationId:
+      typeof shipping.cost_configuration_id === "string"
+        ? shipping.cost_configuration_id
+        : typeof shipping.costConfigurationId === "string"
+          ? shipping.costConfigurationId
+          : undefined,
+  };
 }
 
 export function normalizeListingDetail(raw: Record<string, unknown>): ListingDetail {
@@ -142,6 +159,7 @@ export function normalizeListingDetail(raw: Record<string, unknown>): ListingDet
           .map((t) => ({ id: String(get(t, ["id"]) ?? ""), name: pickText(get(t, ["name"])) }))
       : undefined,
     delivery: (get(raw, ["delivery"]) as Record<string, unknown> | null | undefined) ?? null,
+    shipping: pickShipping(raw),
     sellerId: String(get(user, ["id"]) ?? get(raw, ["user_id"]) ?? get(raw, ["userId"]) ?? ""),
     condition:
       typeof get(raw, ["condition"]) === "string"

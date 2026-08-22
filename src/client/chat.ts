@@ -183,6 +183,83 @@ export interface OfferResult {
   currency: string;
 }
 
+export interface OfferEvaluation {
+  ok: boolean;
+  reason?: string;
+  shippable: boolean;
+  pickupDistanceKm?: number;
+  pickupOk: boolean;
+  estimatedTotal: number;
+  breakdown: {
+    offer: number;
+    protection: number;
+    shipping: number;
+    total: number;
+  };
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+export function evaluateOfferTarget(
+  amount: number,
+  opts: {
+    shippable?: boolean;
+    itemLat?: number;
+    itemLng?: number;
+    pickupLat?: number;
+    pickupLng?: number;
+    pickupRadiusKm?: number;
+    protectionPct?: number;
+    shippingFeeEur?: number;
+  }
+): OfferEvaluation {
+  const protectionPct = opts.protectionPct ?? 8;
+  const shippingFee = opts.shippingFeeEur ?? 3;
+  const shippable = opts.shippable === true;
+  let pickupDistanceKm: number | undefined;
+  if (
+    opts.itemLat !== undefined &&
+    opts.itemLng !== undefined &&
+    opts.pickupLat !== undefined &&
+    opts.pickupLng !== undefined
+  ) {
+    pickupDistanceKm = haversineKm(opts.itemLat, opts.itemLng, opts.pickupLat, opts.pickupLng);
+  }
+  const pickupOk =
+    pickupDistanceKm !== undefined &&
+    opts.pickupRadiusKm !== undefined &&
+    pickupDistanceKm <= opts.pickupRadiusKm;
+  const usesShipping = shippable && !pickupOk;
+  const protection = usesShipping ? Math.round(amount * (protectionPct / 100) * 100) / 100 : 0;
+  const shipping = usesShipping ? shippingFee : 0;
+  const total = Math.round((amount + protection + shipping) * 100) / 100;
+  let ok = true;
+  let reason: string | undefined;
+  if (!shippable && !pickupOk) {
+    ok = false;
+    reason = pickupDistanceKm !== undefined
+      ? `Seller only ships by pickup (no Wallapop shipping) and the item is ${Math.round(pickupDistanceKm)} km from your pickup location (radius ${opts.pickupRadiusKm ?? "?"} km).`
+      : "Seller only does in-person pickup and no pickup location is configured.";
+  }
+  return {
+    ok,
+    reason,
+    shippable,
+    pickupDistanceKm,
+    pickupOk,
+    estimatedTotal: total,
+    breakdown: { offer: amount, protection, shipping, total },
+  };
+}
+
 export async function makeOffer(
   session: SessionManager,
   itemHash: string,

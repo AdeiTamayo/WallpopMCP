@@ -24,7 +24,7 @@ Hybrid, unofficial MCP server for the Wallapop marketplace, built in TypeScript.
 | `list_conversations` | required | Chat inbox: other user, item, unread count, last message |
 | `get_messages` | required | Full message history of a conversation |
 | `send_message` | required | Send a chat message (real-time channel) |
-| `make_offer` | required | Send a purchase offer (EUR) — seller gets it in chat and can accept/reject |
+| `make_offer` | required | Send a purchase offer (EUR) — seller gets it in chat and can accept/reject. Blocks in-person-only listings outside your pickup radius and reports the real total (offer + Wallapop protection + shipping) |
 
 ## Quick start
 
@@ -59,6 +59,8 @@ npm run inspector
 | `WALLAPOP_SESSION_FILE` | Token/cookie persistence (default `./wallapop-session.json`, gitignored) |
 | `WALLAPOP_RATE_DELAY_MS` | Min delay between API calls (default 600) |
 | `WALLAPOP_MAX_RESULTS` | Search results cap, 1–200 (default 200) |
+| `WALLAPOP_PICKUP_LAT` / `LNG` / `RADIUS_KM` | Your pickup location — `make_offer` refuses in-person-only listings outside this radius |
+| `WALLAPOP_PROTECTION_PCT` / `WALLAPOP_SHIPPING_FEE_EUR` | Wallapop protection fee % (≈8–10) and shipping fee (≈3–5) used to report the real total of an offer |
 | `WALLAPOP_BROWSER` | `auto` (default) \| `chrome` \| `msedge` \| `chromium` \| `off` |
 
 > Note: `WALLAPOP_EMAIL`/`WALLAPOP_PASSWORD` may fail for accounts with MFA or Keycloak flows — in that case export cookies from a logged-in browser into `WALLAPOP_COOKIES_FILE` (a JSON array of cookie objects) and the server will use them directly.
@@ -87,3 +89,7 @@ npm run inspector
 - `favorite_listing`/`unfavorite_listing` use best-effort endpoint candidates — verify with your account; endpoints change.
 - Item `condition` is only reliably available via `get_listing` (search results usually omit it).
 - Some sellers disable offers — `make_offer` surfaces a 409 error in that case.
+## License
+
+MIT � see [LICENSE](LICENSE). Unofficial project, not affiliated with or endorsed by Wallapop.
+

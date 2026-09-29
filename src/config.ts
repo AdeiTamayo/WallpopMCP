@@ -3,9 +3,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-dotenv.config();
-
 const here = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(here, "..", ".env") });
 const projectRoot = path.resolve(here, "..", "..");
 
 export interface AppConfig {

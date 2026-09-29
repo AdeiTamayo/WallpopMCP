@@ -107,7 +107,7 @@ export function registerPublicTools(server: McpServer): void {
           maxPrice: args.maxPrice,
           latitude: args.latitude ?? config.defaultLat,
           longitude: args.longitude ?? config.defaultLng,
-          distanceKm: args.distanceKm,
+          distanceKm: args.distanceKm ?? config.defaultDistanceKm,
           orderBy: args.orderBy,
           nextPage: args.nextPage,
           maxResults: args.maxResults,

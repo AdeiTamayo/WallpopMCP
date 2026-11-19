@@ -262,6 +262,27 @@ export class BrowserClient {
     }
   }
 
+  /**
+   * Seeds the persistent profile with session cookies the server itself saved (e.g. a NextAuth session
+   * cookie rotated by the HTTP refresh path), so the browser route uses the newest session.
+   */
+  async seedCookies(cookies: Record<string, string>): Promise<void> {
+    const ctx = await this.ensure();
+    const wanted = Object.entries(cookies).filter(([name]) => isSessionCookieName(name));
+    if (wanted.length === 0) return;
+    await ctx.addCookies(
+      wanted.map(([name, value]) => ({
+        name,
+        value,
+        domain: "es.wallapop.com",
+        path: "/",
+        secure: true,
+        httpOnly: name !== "accessToken",
+        sameSite: "Lax" as const,
+      }))
+    );
+  }
+
   private async wallapopCookies(): Promise<Record<string, string>> {
     const ctx = await this.ensure();
     const map: Record<string, string> = {};

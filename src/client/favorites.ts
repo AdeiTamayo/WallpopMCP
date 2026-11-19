@@ -1,4 +1,3 @@
-import { apiRequest } from "./httpClient.js";
 import { WallapopError } from "../types.js";
 import type { SessionManager } from "./auth.js";
 import { scrapePage, firstOf } from "../fallback/ssrScrape.js";
@@ -24,10 +23,9 @@ function slugPart(ref: string): string {
 }
 
 async function fetchFavorites(session: SessionManager): Promise<FavoriteItem[]> {
-  const res = await apiRequest({
+  const res = await session.request({
     path: "/api/v3/user/items/favorited",
     query: { query: "", order_by: "newest", page_size: 100 },
-    ...session.authHeaders(),
   });
   const payload = res.json as Record<string, unknown> | null;
   const arr = (payload?.data ?? payload?.items ?? []) as Array<Record<string, unknown>>;
@@ -90,7 +88,7 @@ export async function favoriteListing(session: SessionManager, ref: string): Pro
   for (const builder of FAVORITE_PATHS) {
     const { method, path, body } = builder(apiId);
     try {
-      const res = await apiRequest({ method, path, body, ...session.authHeaders() });
+      const res = await session.request({ method, path, body });
       if (res.status < 300) return true;
     } catch (err) {
       const status = (err as { status?: number }).status;
@@ -115,7 +113,7 @@ export async function unfavoriteListing(session: SessionManager, ref: string): P
   for (const builder of UNFAVORITE_PATHS) {
     const { method, path, body } = builder(apiId);
     try {
-      const res = await apiRequest({ method, path, body, ...session.authHeaders() });
+      const res = await session.request({ method, path, body });
       if (res.status < 300) return true;
     } catch (err) {
       const status = (err as { status?: number }).status;

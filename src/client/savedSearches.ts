@@ -1,4 +1,3 @@
-import { apiRequest } from "./httpClient.js";
 import { config } from "../config.js";
 import type { SessionManager } from "./auth.js";
 
@@ -45,9 +44,8 @@ function toSavedSearch(raw: Record<string, unknown>): SavedSearch {
 
 export async function getSavedSearches(session: SessionManager): Promise<SavedSearch[]> {
   await session.ensureFreshToken();
-  const res = await apiRequest({
+  const res = await session.request({
     path: "/api/v3/searchalerts/savedsearch/",
-    ...session.authHeaders(),
   });
   const payload = res.json as Record<string, unknown> | null;
   const arr = Array.isArray(payload)
@@ -71,11 +69,10 @@ export async function createSavedSearch(session: SessionManager, params: SavedSe
   if (params.orderBy) query.order_by = params.orderBy;
   query.latitude = config.defaultLat;
   query.longitude = config.defaultLng;
-  const res = await apiRequest({
+  const res = await session.request({
     method: "POST",
     path: "/api/v3/searchalerts/savedsearch",
     query,
-    ...session.authHeaders(),
   });
   const payload = res.json as Record<string, unknown> | null;
   const data = ((payload?.data ?? payload) as Record<string, unknown> | null) ?? {};
@@ -84,24 +81,22 @@ export async function createSavedSearch(session: SessionManager, params: SavedSe
 
 export async function deleteSavedSearch(session: SessionManager, id: string): Promise<boolean> {
   await session.ensureFreshToken();
-  const res = await apiRequest({
+  const res = await session.request({
     method: "DELETE",
     path: `/api/v3/searchalerts/savedsearch/${id}`,
-    ...session.authHeaders(),
   });
   return res.status < 300;
 }
 
 export async function checkSavedSearchExists(session: SessionManager, params: SavedSearchParams): Promise<boolean> {
   await session.ensureFreshToken();
-  const res = await apiRequest({
+  const res = await session.request({
     path: "/api/v3/searchalerts/savedsearch/exists",
     query: {
       keywords: params.keywords,
       category_id: params.categoryId,
       order_by: params.orderBy,
     },
-    ...session.authHeaders(),
   });
   return res.status < 300;
 }

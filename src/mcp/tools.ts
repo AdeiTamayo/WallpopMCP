@@ -2,14 +2,14 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { hybrid, memoize } from "../hybrid.js";
-import { SessionManager } from "../client/auth.js";
+import { SessionManager, RELOGIN_MESSAGE } from "../client/auth.js";
 import { config, hasSessionFile } from "../config.js";
 import { getSavedSearches, createSavedSearch, deleteSavedSearch } from "../client/savedSearches.js";
 import { favoriteListing, unfavoriteListing, resolveApiId } from "../client/favorites.js";
 import { getConversations, getConversationMessages, sendMessage, makeOffer, evaluateOfferTarget } from "../client/chat.js";
 import { getListingById } from "../client/items.js";
 import { browserClient, type LoginStepResult } from "../fallback/browserClient.js";
-import { WallapopError } from "../types.js";
+import { WallapopError, WallapopAuthError } from "../types.js";
 import type { ItemSummary } from "../types.js";
 
 const ORDER_BY = ["most_relevance", "newest", "price_low_to_high", "price_high_to_low"] as const;
@@ -378,7 +378,7 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     async (args) => {
       try {
         session.importCookiesFile(args.file);
-        const ok = await session.refresh();
+        const ok = await session.refresh("always");
         const auth = session.getSession();
         return textResult({ imported: true, valid: ok, hasAccessToken: Boolean(auth.accessToken), cookieCount: Object.keys(auth.cookies).length });
       } catch (err) {
@@ -398,9 +398,9 @@ export function registerAuthTools(server: McpServer, session: SessionManager): v
     },
     async () => {
       try {
-        await session.ensureFreshToken();
+        if (!(await session.refresh("always"))) throw new WallapopAuthError(RELOGIN_MESSAGE);
         const auth = session.getSession();
-        return textResult({ refreshed: true, authenticated: session.isAuthenticated(), hasAccessToken: Boolean(auth.accessToken), cookieCount: Object.keys(auth.cookies).length });
+        return textResult({ refreshed: true, expiresAt: auth.expiresAt ? new Date(auth.expiresAt).toISOString() : undefined, authenticated: session.isAuthenticated(), hasAccessToken: Boolean(auth.accessToken), cookieCount: Object.keys(auth.cookies).length });
       } catch (err) {
         return errorResult(err);
       }

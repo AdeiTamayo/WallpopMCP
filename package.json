@@ -14,7 +14,7 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test dist/test/tools.test.js dist/test/hybrid.test.js dist/test/offer.test.js",
+    "test": "npm run build && node --test dist/test/tools.test.js dist/test/hybrid.test.js dist/test/offer.test.js dist/test/auth.test.js",
     "smoke": "tsx scripts/smoke.ts",
     "health": "tsx scripts/health.ts",
     "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"

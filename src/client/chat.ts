@@ -1,4 +1,3 @@
-import { apiRequest } from "./httpClient.js";
 import { WallapopError } from "../types.js";
 import type { SessionManager } from "./auth.js";
 import { randomUUID } from "node:crypto";
@@ -117,18 +116,16 @@ function convFromRaw(raw: Record<string, unknown>): Conversation {
 }
 
 async function getInbox(session: SessionManager): Promise<InboxResponse> {
-  const res = await apiRequest({
+  const res = await session.request({
     path: "/bff/messaging/inbox",
     query: { page_size: 30, max_messages: 30, t: Date.now() },
-    ...session.authHeaders(),
   });
   return res.json as InboxResponse;
 }
 
 async function getPnToken(session: SessionManager): Promise<PnTokenResponse> {
-  const res = await apiRequest({
+  const res = await session.request({
     path: "/api/v3/instant-messaging/token",
-    ...session.authHeaders(),
   });
   const body = res.json as PnTokenResponse | null;
   if (!body || typeof body.token !== "string" || body.token.length === 0) {
@@ -268,7 +265,7 @@ export async function makeOffer(
 ): Promise<OfferResult> {
   await session.ensureFreshToken();
   const offerId = randomUUID();
-  const res = await apiRequest({
+  const res = await session.request({
     path: "/api/v3/delivery/buyer/offers",
     method: "POST",
     body: {
@@ -277,7 +274,6 @@ export async function makeOffer(
       offer_price_currency: currency,
       item_ids: [itemHash],
     },
-    ...session.authHeaders(),
   });
   return { offerId, itemIds: [itemHash], amount, currency };
 }

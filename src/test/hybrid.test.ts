@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { memoize, dedupeAndRankSearchResults } from "./hybrid.js";
+import { memoize, dedupeAndRankSearchResults } from "../hybrid.js";
 
 test("dedupeAndRankSearchResults prefers valid shippable items and removes duplicates", () => {
   const items = [

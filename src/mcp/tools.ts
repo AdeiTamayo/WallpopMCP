@@ -2,14 +2,14 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { hybrid, memoize } from "../hybrid.js";
-import { SessionManager } from "../client/auth.js";
+import { SessionManager, RELOGIN_MESSAGE } from "../client/auth.js";
 import { config, hasSessionFile } from "../config.js";
 import { getSavedSearches, createSavedSearch, deleteSavedSearch } from "../client/savedSearches.js";
 import { favoriteListing, unfavoriteListing, resolveApiId } from "../client/favorites.js";
 import { getConversations, getConversationMessages, sendMessage, makeOffer, evaluateOfferTarget } from "../client/chat.js";
 import { getListingById } from "../client/items.js";
-import { browserClient } from "../fallback/browserClient.js";
-import { WallapopError } from "../types.js";
+import { browserClient, type LoginStepResult } from "../fallback/browserClient.js";
+import { WallapopError, WallapopAuthError } from "../types.js";
 import type { ItemSummary } from "../types.js";
 
 const ORDER_BY = ["most_relevance", "newest", "price_low_to_high", "price_high_to_low"] as const;
@@ -62,6 +62,10 @@ export function registerPublicTools(server: McpServer): void {
         const sessionState = {
           authenticated: Boolean(config.email || config.password || hasSession),
           sessionFile: config.sessionFile,
+          sessionFileExists: hasSession,
+          browserProfileDir: config.browserProfileDir,
+          pendingLoginAgeSec: browserClient.pendingLoginAgeSec(),
+          autoLogin: config.autoLogin,
           browserFallback: browserClient.isEnabled(),
           defaultLocation: {
             latitude: config.defaultLat,
@@ -270,20 +274,133 @@ export function registerPublicTools(server: McpServer): void {
 }
 
 export function registerAuthTools(server: McpServer, session: SessionManager): void {
+  const summarize = (r: LoginStepResult) => ({
+    status: r.status,
+    message: r.message,
+    pageHint: r.pageHint,
+    sessionSaved: r.status === "authenticated",
+    sessionFile: r.status === "authenticated" ? config.sessionFile : undefined,
+  });
+
+  server.registerTool(
+    "login_start",
+    {
+      title: "Start Wallapop login (step 1 of 2)",
+      annotations: A_CREATE,
+      description:
+        "Logs in to Wallapop through its Keycloak page with the configured email/password in a persistent browser profile. If the profile is already logged in it just saves the session (no SMS). Otherwise Wallapop SENDS AN SMS CODE to the account phone and this returns status=otp_required: then call login_submit_code with that code within ~10 minutes. Do not call repeatedly: every call can send a new SMS. dryRun=true only checks the page flow (types nothing, no SMS).",
+      inputSchema: { dryRun: z.boolean().optional().describe("Only navigate to the login form; do not type or submit anything") },
+    },
+    async (args) => {
+      try {
+        if (!config.email || !config.password) throw new WallapopError("WALLAPOP_EMAIL/WALLAPOP_PASSWORD not configured", "NO_CREDENTIALS");
+        if (!browserClient.isEnabled()) throw new WallapopError("Browser is disabled (WALLAPOP_BROWSER=off)", "BROWSER_DISABLED");
+        if (browserClient.hasPendingLogin() && (browserClient.pendingLoginAgeSec() ?? 0) < 600) {
+          return textResult({
+            status: "otp_required",
+            message: "A login is already waiting for the SMS code. Call login_submit_code, or login_cancel first to start over.",
+          });
+        }
+        const r = await browserClient.loginStart(config.email, config.password, 48000, Boolean(args.dryRun));
+        session.adopt(r);
+        return textResult(summarize(r));
+      } catch (err) {
+        return errorResult(err);
+      }
+    }
+  );
+
+  server.registerTool(
+    "login_submit_code",
+    {
+      title: "Finish Wallapop login with the SMS code (step 2 of 2)",
+      annotations: A_CREATE,
+      description: "Types the SMS verification code into the pending login started by login_start and saves the session on success.",
+      inputSchema: { code: z.string().min(4).max(12).describe("Verification code received by SMS") },
+    },
+    async (args) => {
+      try {
+        const r = await browserClient.loginSubmitCode(args.code);
+        session.adopt(r);
+        return textResult(summarize(r));
+      } catch (err) {
+        return errorResult(err);
+      }
+    }
+  );
+
+  server.registerTool(
+    "login_status",
+    {
+      title: "Check the pending Wallapop login",
+      annotations: A_READ_REMOTE,
+      description: "Reports the state of a pending login (or whether the browser profile already has an active session, saving it if so). Never sends an SMS.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const r = await browserClient.loginStatus();
+        session.adopt(r);
+        return textResult(summarize(r));
+      } catch (err) {
+        return errorResult(err);
+      }
+    }
+  );
+
+  server.registerTool(
+    "login_cancel",
+    {
+      title: "Cancel the pending Wallapop login",
+      annotations: A_TOGGLE,
+      description: "Closes the pending login page.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        await browserClient.loginCancel();
+        return textResult({ cancelled: true });
+      } catch (err) {
+        return errorResult(err);
+      }
+    }
+  );
+
+  server.registerTool(
+    "import_session_cookies",
+    {
+      title: "Import Wallapop session cookies from a JSON file",
+      annotations: A_CREATE,
+      description:
+        "Imports cookies exported from a logged-in es.wallapop.com browser session (JSON array of {name, value}, e.g. from a cookie-export extension) and saves them as the session. Then validates them without logging in.",
+      inputSchema: { file: z.string().describe("Absolute path to the cookies JSON file on this machine") },
+    },
+    async (args) => {
+      try {
+        session.importCookiesFile(args.file);
+        const ok = await session.refresh("always");
+        const auth = session.getSession();
+        return textResult({ imported: true, valid: ok, hasAccessToken: Boolean(auth.accessToken), cookieCount: Object.keys(auth.cookies).length });
+      } catch (err) {
+        return errorResult(err);
+      }
+    }
+  );
+
   server.registerTool(
     "refresh_session",
     {
       title: "Refresh the Wallapop auth session",
       annotations: A_REFRESH,
       description:
-        "Refresh or re-login the current session so favorite and saved-search tools continue to work with fresh access tokens.",
+        "Refresh the stored session (no SMS, never logs in). If it fails, use login_start + login_submit_code.",
       inputSchema: {},
     },
     async () => {
       try {
-        await session.ensureFreshToken();
+        if (!(await session.refresh("always"))) throw new WallapopAuthError(RELOGIN_MESSAGE);
         const auth = session.getSession();
-        return textResult({ refreshed: true, authenticated: session.isAuthenticated(), hasAccessToken: Boolean(auth.accessToken), cookieCount: Object.keys(auth.cookies).length });
+        return textResult({ refreshed: true, expiresAt: auth.expiresAt ? new Date(auth.expiresAt).toISOString() : undefined, authenticated: session.isAuthenticated(), hasAccessToken: Boolean(auth.accessToken), cookieCount: Object.keys(auth.cookies).length });
       } catch (err) {
         return errorResult(err);
       }

@@ -4,8 +4,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
-import { registerPublicTools, registerAuthTools } from "./mcp/tools.js";
-import { SessionManager } from "./client/auth.js";
+import { registerPublicTools, registerAuthTools } from "../mcp/tools.js";
+import { SessionManager } from "../client/auth.js";
 
 const EXPECTED_TOOLS = [
   "server_status",
@@ -14,6 +14,11 @@ const EXPECTED_TOOLS = [
   "get_seller",
   "list_categories",
   "scan_products",
+  "login_start",
+  "login_submit_code",
+  "login_status",
+  "login_cancel",
+  "import_session_cookies",
   "refresh_session",
   "get_saved_searches",
   "create_saved_search",

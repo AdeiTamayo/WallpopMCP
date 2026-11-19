@@ -33,10 +33,21 @@ async function main(): Promise<void> {
   await server.connect(transport);
   log("wallapop-mcp server running over stdio");
 
-  process.on("SIGINT", async () => {
+  // Close Chrome whenever the MCP host goes away, so no orphaned browser keeps the profile locked.
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    const timer = setTimeout(() => process.exit(0), 5000);
     await browserClient.close().catch(() => void 0);
+    clearTimeout(timer);
     process.exit(0);
-  });
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+  process.on("SIGHUP", shutdown);
+  process.stdin.on("end", shutdown);
+  process.stdin.on("close", shutdown);
 }
 
 main().catch((err) => {

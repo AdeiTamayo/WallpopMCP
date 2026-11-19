@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { evaluateOfferTarget } from "./client/chat.js";
+import { evaluateOfferTarget } from "../client/chat.js";
 
 const DONOSTI = { pickupLat: 43.3214, pickupLng: -1.9853, pickupRadiusKm: 8 };
 

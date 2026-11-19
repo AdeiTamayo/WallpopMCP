@@ -4,7 +4,21 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(here, "..", ".env") });
+const envPath = path.resolve(here, "..", ".env");
+dotenv.config({ path: envPath });
+// dotenv treats an unquoted "#" as the start of a comment, silently truncating values such as passwords.
+try {
+  for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const m = /^(WALLAPOP_[A-Z_]+)=(.*)$/.exec(line);
+    if (m && m[2].includes("#") && !/^["'`]/.test(m[2])) {
+      process.stderr.write(
+        `[wallapop-mcp] WARNING: ${m[1]} in .env contains an unquoted '#'; dotenv truncates it. Wrap the value in single quotes.\n`
+      );
+    }
+  }
+} catch {
+  void 0;
+}
 const projectRoot = path.resolve(here, "..", "..");
 
 export interface AppConfig {
@@ -15,6 +29,10 @@ export interface AppConfig {
   defaultLng: number;
   defaultDistanceKm: number;
   sessionFile: string;
+  /** Absolute path of the persistent Chrome profile used by the browser fallback and the login flow. */
+  browserProfileDir: string;
+  /** Legacy automatic login on every authenticated call. OFF by default: the real login now needs an SMS code. */
+  autoLogin: boolean;
   rateDelayMs: number;
   browser: "auto" | "chrome" | "msedge" | "chromium" | "off";
   maxResultsCap: number;
@@ -52,6 +70,10 @@ export function loadConfig(): AppConfig {
     defaultLng: num("WALLAPOP_DEFAULT_LNG", 2.1774),
     defaultDistanceKm: num("WALLAPOP_DEFAULT_DISTANCE_KM", 50),
     sessionFile: path.resolve(sessionFile),
+    browserProfileDir: path.resolve(
+      process.env.WALLAPOP_BROWSER_PROFILE || path.join(path.dirname(path.resolve(sessionFile)), "wallapop-browser")
+    ),
+    autoLogin: bool("WALLAPOP_AUTO_LOGIN", false),
     rateDelayMs: num("WALLAPOP_RATE_DELAY_MS", 600),
     browser: ["auto", "chrome", "msedge", "chromium", "off"].includes(browser) ? browser : "auto",
     maxResultsCap: num("WALLAPOP_MAX_RESULTS", 200),
